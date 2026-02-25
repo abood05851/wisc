@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ster IQ</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0e17;
+      color: #e0e6f0;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    #app {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* ── Map Area ── */
+    #map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 40% 50%, #0f1525 0%, #0a0e17 70%);
+    }
+
+    #map-container svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .country-path {
+      stroke: #1a2540;
+      stroke-width: 0.5px;
+      cursor: pointer;
+      transition: fill 0.2s ease;
+    }
+
+    .country-path.default {
+      fill: #1b2a4a;
+    }
+
+    .country-path.default:hover {
+      fill: #2a4070;
+    }
+
+    .country-path.selected {
+      fill: #3b82f6;
+      stroke: #60a5fa;
+      stroke-width: 1.5px;
+    }
+
+    .country-path.dimmed {
+      fill: #111c33;
+      opacity: 0.5;
+    }
+
+    /* ── Sidebar / Info Panel ── */
+    #info-panel {
+      width: 380px;
+      background: #0d1220;
+      border-left: 1px solid #1a2540;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    #info-panel.collapsed {
+      transform: translateX(100%);
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+    }
+
+    .panel-header {
+      padding: 28px 24px 20px;
+      border-bottom: 1px solid #1a2540;
+    }
+
+    .panel-header .app-brand {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #3b82f6;
+      margin-bottom: 4px;
+    }
+
+    .panel-header h1 {
+      font-size: 14px;
+      font-weight: 400;
+      color: #7a8baa;
+    }
+
+    .country-info {
+      padding: 24px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .country-info .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      color: #3d4f6f;
+    }
+
+    .empty-state .icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #111c33;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 28px;
+    }
+
+    .empty-state p {
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 220px;
+    }
+
+    /* ── Selected Country View ── */
+    .selected-country {
+      display: none;
+    }
+
+    .selected-country.active {
+      display: block;
+    }
+
+    .selected-country .country-flag-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .selected-country .country-name {
+      font-size: 22px;
+      font-weight: 600;
+      color: #f0f4fc;
+    }
+
+    .selected-country .country-region {
+      font-size: 12px;
+      color: #506080;
+      margin-top: 2px;
+    }
+
+    .info-section {
+      background: #111c33;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 12px;
+    }
+
+    .info-section .section-title {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #3b82f6;
+      margin-bottom: 14px;
+    }
+
+    .info-placeholder {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .placeholder-line {
+      height: 12px;
+      border-radius: 6px;
+      background: #182440;
+    }
+
+    .placeholder-line.w70 { width: 70%; }
+    .placeholder-line.w50 { width: 50%; }
+    .placeholder-line.w85 { width: 85%; }
+    .placeholder-line.w40 { width: 40%; }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: none;
+      border: 1px solid #1a2540;
+      color: #7a8baa;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: all 0.2s;
+    }
+
+    .back-btn:hover {
+      border-color: #3b82f6;
+      color: #60a5fa;
+    }
+
+    /* ── Grid lines behind map ── */
+    .graticule {
+      fill: none;
+      stroke: #111c33;
+      stroke-width: 0.3px;
+    }
+
+    /* ── Loading ── */
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0e17;
+      z-index: 10;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid #1a2540;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Tooltip ── */
+    #tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: #182440;
+      border: 1px solid #2a4070;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #c0ccee;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 20;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="map-container">
+      <div id="loading"><div class="spinner"></div></div>
+      <div id="tooltip"></div>
+    </div>
+
+    <div id="info-panel">
+      <div class="panel-header">
+        <div class="app-brand">Ster IQ</div>
+        <h1>Continental Overview</h1>
+      </div>
+
+      <div class="country-info">
+        <!-- Empty state -->
+        <div class="empty-state" id="empty-state">
+          <div class="icon">&#9673;</div>
+          <p>Select a country on the map to view financial data and insights.</p>
+        </div>
+
+        <!-- Selected country detail -->
+        <div class="selected-country" id="country-detail">
+          <div class="country-flag-bar">
+            <div>
+              <div class="country-name" id="country-name">—</div>
+              <div class="country-region" id="country-region">—</div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="section-title">Financial Overview</div>
+            <div class="info-placeholder">
+              <div class="placeholder-line w85"></div>
+              <div class="placeholder-line w70"></div>
+              <div class="placeholder-line w50"></div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="section-title">Market Data</div>
+            <div class="info-placeholder">
+              <div class="placeholder-line w70"></div>
+              <div class="placeholder-line w85"></div>
+              <div class="placeholder-line w40"></div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <div class="section-title">Investment Opportunities</div>
+            <div class="info-placeholder">
+              <div class="placeholder-line w50"></div>
+              <div class="placeholder-line w85"></div>
+              <div class="placeholder-line w70"></div>
+            </div>
+          </div>
+
+          <button class="back-btn" id="back-btn">&#8592; Back to overview</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const regionMap = {
+      'DZA':'North Africa','EGY':'North Africa','LBY':'North Africa','MAR':'North Africa',
+      'TUN':'North Africa','ESH':'North Africa','SDN':'North Africa','SSD':'East Africa',
+      'NGA':'West Africa','GHA':'West Africa','SEN':'West Africa','MLI':'West Africa',
+      'BFA':'West Africa','NER':'West Africa','CIV':'West Africa','GIN':'West Africa',
+      'BEN':'West Africa','TGO':'West Africa','SLE':'West Africa','LBR':'West Africa',
+      'GMB':'West Africa','GNB':'West Africa','CPV':'West Africa','MRT':'West Africa',
+      'KEN':'East Africa','TZA':'East Africa','UGA':'East Africa','RWA':'East Africa',
+      'BDI':'East Africa','ETH':'East Africa','ERI':'East Africa','DJI':'East Africa',
+      'SOM':'East Africa','MDG':'East Africa','MUS':'East Africa','COM':'East Africa',
+      'SYC':'East Africa','MWI':'East Africa','MOZ':'East Africa','ZMB':'East Africa',
+      'ZWE':'East Africa',
+      'ZAF':'Southern Africa','BWA':'Southern Africa','NAM':'Southern Africa',
+      'LSO':'Southern Africa','SWZ':'Southern Africa','AGO':'Southern Africa',
+      'COD':'Central Africa','COG':'Central Africa','CMR':'Central Africa',
+      'GAB':'Central Africa','GNQ':'Central Africa','TCD':'Central Africa',
+      'CAF':'Central Africa','STP':'Central Africa',
+    };
+
+    const width = window.innerWidth - 380;
+    const height = window.innerHeight;
+
+    const svg = d3.select('#map-container')
+      .append('svg')
+      .attr('width', width)
+      .attr('height', height);
+
+    const g = svg.append('g');
+
+    const projection = d3.geoMercator()
+      .center([20, 2])
+      .scale(Math.min(width, height) * 0.55)
+      .translate([width / 2, height / 2]);
+
+    const path = d3.geoPath().projection(projection);
+
+    // Graticule
+    const graticule = d3.geoGraticule().step([10, 10]);
+    g.append('path')
+      .datum(graticule())
+      .attr('class', 'graticule')
+      .attr('d', path);
+
+    const tooltip = d3.select('#tooltip');
+    let selectedId = null;
+    let zoomed = false;
+
+    // African country ISO-A3 codes
+    const africanCodes = new Set([
+      'DZA','AGO','BEN','BWA','BFA','BDI','CPV','CMR','CAF','TCD','COM','COG','COD',
+      'CIV','DJI','EGY','GNQ','ERI','SWZ','ETH','GAB','GMB','GHA','GIN','GNB','KEN',
+      'LSO','LBR','LBY','MDG','MWI','MLI','MRT','MUS','MAR','MOZ','NAM','NER','NGA',
+      'RWA','STP','SEN','SYC','SLE','SOM','ZAF','SSD','SDN','TZA','TGO','TUN','UGA',
+      'ZMB','ZWE','ESH'
+    ]);
+
+    // Inline mapping: numeric country ID → { iso, name }
+    const countryData = {
+      '012': { iso:'DZA', name:'Algeria' },
+      '024': { iso:'AGO', name:'Angola' },
+      '204': { iso:'BEN', name:'Benin' },
+      '072': { iso:'BWA', name:'Botswana' },
+      '854': { iso:'BFA', name:'Burkina Faso' },
+      '108': { iso:'BDI', name:'Burundi' },
+      '132': { iso:'CPV', name:'Cabo Verde' },
+      '120': { iso:'CMR', name:'Cameroon' },
+      '140': { iso:'CAF', name:'Central African Republic' },
+      '148': { iso:'TCD', name:'Chad' },
+      '174': { iso:'COM', name:'Comoros' },
+      '178': { iso:'COG', name:'Republic of the Congo' },
+      '180': { iso:'COD', name:'Democratic Republic of the Congo' },
+      '384': { iso:'CIV', name:"Cote d'Ivoire" },
+      '262': { iso:'DJI', name:'Djibouti' },
+      '818': { iso:'EGY', name:'Egypt' },
+      '226': { iso:'GNQ', name:'Equatorial Guinea' },
+      '232': { iso:'ERI', name:'Eritrea' },
+      '748': { iso:'SWZ', name:'Eswatini' },
+      '231': { iso:'ETH', name:'Ethiopia' },
+      '266': { iso:'GAB', name:'Gabon' },
+      '270': { iso:'GMB', name:'Gambia' },
+      '288': { iso:'GHA', name:'Ghana' },
+      '324': { iso:'GIN', name:'Guinea' },
+      '624': { iso:'GNB', name:'Guinea-Bissau' },
+      '404': { iso:'KEN', name:'Kenya' },
+      '426': { iso:'LSO', name:'Lesotho' },
+      '430': { iso:'LBR', name:'Liberia' },
+      '434': { iso:'LBY', name:'Libya' },
+      '450': { iso:'MDG', name:'Madagascar' },
+      '454': { iso:'MWI', name:'Malawi' },
+      '466': { iso:'MLI', name:'Mali' },
+      '478': { iso:'MRT', name:'Mauritania' },
+      '480': { iso:'MUS', name:'Mauritius' },
+      '504': { iso:'MAR', name:'Morocco' },
+      '508': { iso:'MOZ', name:'Mozambique' },
+      '516': { iso:'NAM', name:'Namibia' },
+      '562': { iso:'NER', name:'Niger' },
+      '566': { iso:'NGA', name:'Nigeria' },
+      '646': { iso:'RWA', name:'Rwanda' },
+      '678': { iso:'STP', name:'Sao Tome and Principe' },
+      '686': { iso:'SEN', name:'Senegal' },
+      '690': { iso:'SYC', name:'Seychelles' },
+      '694': { iso:'SLE', name:'Sierra Leone' },
+      '706': { iso:'SOM', name:'Somalia' },
+      '710': { iso:'ZAF', name:'South Africa' },
+      '728': { iso:'SSD', name:'South Sudan' },
+      '729': { iso:'SDN', name:'Sudan' },
+      '834': { iso:'TZA', name:'Tanzania' },
+      '768': { iso:'TGO', name:'Togo' },
+      '788': { iso:'TUN', name:'Tunisia' },
+      '800': { iso:'UGA', name:'Uganda' },
+      '894': { iso:'ZMB', name:'Zambia' },
+      '716': { iso:'ZWE', name:'Zimbabwe' },
+      '732': { iso:'ESH', name:'Western Sahara' },
+    };
+
+    const idToIso = {};
+    const idToName = {};
+    for (const [numId, info] of Object.entries(countryData)) {
+      idToIso[numId] = info.iso;
+      idToName[numId] = info.name;
+    }
+
+    // Named regions without numeric IDs in the dataset
+    const namedAfricanRegions = { 'Somaliland': { iso: 'SOM', name: 'Somaliland' } };
+
+    // Load world topojson from CDN (50m for better detail)
+    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(world => {
+      const countries = topojson.feature(world, world.objects.countries);
+
+      const africaFeatures = countries.features.filter(f => {
+        // Match by numeric ID
+        if (f.id && idToIso[f.id] && africanCodes.has(idToIso[f.id])) return true;
+        // Match by name for regions without numeric IDs (e.g. Somaliland)
+        const name = f.properties && f.properties.name;
+        if (name && namedAfricanRegions[name]) {
+          f._iso = namedAfricanRegions[name].iso;
+          f._name = namedAfricanRegions[name].name;
+          return true;
+        }
+        return false;
+      });
+
+      g.selectAll('.country-path')
+        .data(africaFeatures)
+        .enter()
+        .append('path')
+        .attr('class', 'country-path default')
+        .attr('d', path)
+        .attr('data-id', d => d.id || d._name)
+        .attr('data-name', d => idToName[d.id] || d._name || 'Unknown')
+        .attr('data-iso', d => idToIso[d.id] || d._iso || '')
+        .on('mouseover', function(event, d) {
+          const fid = d.id || d._name;
+          if (fid === selectedId) return;
+          tooltip.style('opacity', 1).text(idToName[d.id] || d._name || 'Unknown');
+        })
+        .on('mousemove', function(event) {
+          tooltip
+            .style('left', (event.offsetX + 14) + 'px')
+            .style('top', (event.offsetY - 10) + 'px');
+        })
+        .on('mouseout', function() {
+          tooltip.style('opacity', 0);
+        })
+        .on('click', function(event, d) {
+          event.stopPropagation();
+          selectCountry(d);
+        });
+
+      // Hide loading
+      document.getElementById('loading').style.display = 'none';
+    });
+
+    function selectCountry(d) {
+      const id = d.id || d._name;
+      const iso = idToIso[d.id] || d._iso || '';
+      const name = idToName[d.id] || d._name || 'Unknown';
+
+      // If clicking same country, deselect
+      if (selectedId === id) {
+        resetView();
+        return;
+      }
+
+      selectedId = id;
+      zoomed = true;
+
+      // Update classes
+      g.selectAll('.country-path')
+        .classed('default', false)
+        .classed('selected', false)
+        .classed('dimmed', true);
+
+      g.select(`.country-path[data-id="${id}"]`)
+        .classed('dimmed', false)
+        .classed('selected', true)
+        .raise();
+
+      // Zoom to country
+      const [[x0, y0], [x1, y1]] = path.bounds(d);
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      const scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height)));
+      const translateX = width / 2 - scale * cx;
+      const translateY = height / 2 - scale * cy;
+
+      g.transition()
+        .duration(750)
+        .attr('transform', `translate(${translateX},${translateY}) scale(${scale})`);
+
+      // Update sidebar
+      document.getElementById('empty-state').style.display = 'none';
+      document.getElementById('country-detail').classList.add('active');
+      document.getElementById('country-name').textContent = name;
+      document.getElementById('country-region').textContent = regionMap[iso] || 'Africa';
+
+      tooltip.style('opacity', 0);
+    }
+
+    function resetView() {
+      selectedId = null;
+      zoomed = false;
+
+      g.selectAll('.country-path')
+        .classed('selected', false)
+        .classed('dimmed', false)
+        .classed('default', true);
+
+      g.transition()
+        .duration(750)
+        .attr('transform', '');
+
+      document.getElementById('empty-state').style.display = '';
+      document.getElementById('country-detail').classList.remove('active');
+    }
+
+    // Click on empty space to reset
+    svg.on('click', function() {
+      if (zoomed) resetView();
+    });
+
+    // Back button
+    document.getElementById('back-btn').addEventListener('click', resetView);
+
+    // Resize handler
+    window.addEventListener('resize', () => {
+      const newWidth = window.innerWidth - 380;
+      const newHeight = window.innerHeight;
+      svg.attr('width', newWidth).attr('height', newHeight);
+    });
+  </script>
+</body>
+</html>
