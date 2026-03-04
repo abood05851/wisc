@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ster IQ</title>
+  <title>Ster IQ — Investor Dashboard</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://d3js.org/topojson.v3.min.js"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -15,18 +15,22 @@
       font-family: 'Inter', sans-serif;
       background: #0a0e17;
       color: #e0e6f0;
+      height: 100vh;
+      width: 100vw;
       overflow: hidden;
-      height: 100vh;
-      width: 100vw;
     }
 
-    #app {
-      display: flex;
-      height: 100vh;
-      width: 100vw;
-    }
+    /* ════════════════════════════════════════
+       VIEW MANAGEMENT
+       ════════════════════════════════════════ */
+    .view { display: none; height: 100vh; width: 100vw; }
+    .view.active { display: flex; }
 
-    /* ── Map Area ── */
+    /* ════════════════════════════════════════
+       VIEW 1 — MAP
+       ════════════════════════════════════════ */
+    #map-view { flex-direction: row; }
+
     #map-container {
       flex: 1;
       position: relative;
@@ -34,553 +38,1386 @@
       background: radial-gradient(ellipse at 40% 50%, #0f1525 0%, #0a0e17 70%);
     }
 
-    #map-container svg {
-      width: 100%;
-      height: 100%;
-    }
+    #map-container svg { width: 100%; height: 100%; }
 
     .country-path {
       stroke: #1a2540;
       stroke-width: 0.5px;
       cursor: pointer;
-      transition: fill 0.2s ease;
+      transition: fill 0.25s ease, opacity 0.25s ease;
     }
 
-    .country-path.default {
-      fill: #1b2a4a;
-    }
+    .country-path.tier-high   { fill: #10b981; }
+    .country-path.tier-med    { fill: #3b82f6; }
+    .country-path.tier-low    { fill: #6366f1; }
+    .country-path.tier-none   { fill: #1b2a4a; }
 
-    .country-path.default:hover {
-      fill: #2a4070;
-    }
+    .country-path:hover { filter: brightness(1.3); }
+    .country-path.dimmed { opacity: 0.35; }
+    .country-path.selected { stroke: #60a5fa; stroke-width: 1.8px; }
 
-    .country-path.selected {
-      fill: #3b82f6;
-      stroke: #60a5fa;
-      stroke-width: 1.5px;
-    }
+    .graticule { fill: none; stroke: #111c33; stroke-width: 0.3px; }
 
-    .country-path.dimmed {
-      fill: #111c33;
-      opacity: 0.5;
+    /* Tooltip */
+    #tooltip {
+      position: absolute; pointer-events: none;
+      background: #141e34; border: 1px solid #2a4070;
+      padding: 14px 18px; border-radius: 10px;
+      font-size: 12px; color: #c0ccee;
+      opacity: 0; transition: opacity 0.15s;
+      z-index: 50; min-width: 200px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
     }
+    #tooltip .tt-name { font-size: 15px; font-weight: 600; color: #f0f4fc; margin-bottom: 8px; }
+    #tooltip .tt-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; }
+    #tooltip .tt-label { color: #6b7fa0; }
+    #tooltip .tt-value { color: #a0b4d8; font-weight: 500; }
 
-    /* ── Sidebar / Info Panel ── */
-    #info-panel {
-      width: 380px;
-      background: #0d1220;
+    /* Map legend */
+    #map-legend {
+      position: absolute; bottom: 28px; left: 28px;
+      background: rgba(13,18,32,0.92); border: 1px solid #1a2540;
+      border-radius: 10px; padding: 16px 20px;
+      font-size: 11px;
+    }
+    #map-legend .legend-title { font-weight: 600; color: #7a8baa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; font-size: 10px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+
+    /* Sidebar */
+    #sidebar {
+      width: 400px; background: #0d1220;
       border-left: 1px solid #1a2540;
-      display: flex;
-      flex-direction: column;
-      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex; flex-direction: column;
+      overflow: hidden;
     }
 
-    #info-panel.collapsed {
-      transform: translateX(100%);
-      position: absolute;
-      right: 0;
-      top: 0;
-      bottom: 0;
-    }
-
-    .panel-header {
-      padding: 28px 24px 20px;
+    .sidebar-header {
+      padding: 24px 24px 18px;
       border-bottom: 1px solid #1a2540;
     }
+    .sidebar-header .brand {
+      font-size: 11px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: #3b82f6; margin-bottom: 2px;
+    }
+    .sidebar-header h1 { font-size: 14px; font-weight: 400; color: #7a8baa; }
 
-    .panel-header .app-brand {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: #3b82f6;
-      margin-bottom: 4px;
+    .sidebar-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+    .sidebar-empty {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100%; text-align: center; color: #3d4f6f;
+    }
+    .sidebar-empty .icon {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: #111c33; display: flex; align-items: center;
+      justify-content: center; margin-bottom: 14px; font-size: 24px;
+    }
+    .sidebar-empty p { font-size: 13px; line-height: 1.6; max-width: 240px; }
+
+    /* Sidebar country card */
+    .sb-country { display: none; }
+    .sb-country.active { display: block; }
+    .sb-country-name { font-size: 22px; font-weight: 700; color: #f0f4fc; }
+    .sb-country-region { font-size: 12px; color: #506080; margin-top: 2px; margin-bottom: 18px; }
+
+    .sb-stat-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 10px; margin-bottom: 18px;
+    }
+    .sb-stat {
+      background: #111c33; border-radius: 8px; padding: 14px;
+    }
+    .sb-stat-val { font-size: 20px; font-weight: 700; color: #f0f4fc; }
+    .sb-stat-label { font-size: 10px; color: #506080; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+    .sb-sectors { margin-bottom: 18px; }
+    .sb-sectors-title { font-size: 10px; font-weight: 600; color: #3b82f6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .sb-sector-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #151f35; font-size: 13px; }
+    .sb-sector-name { color: #a0b4d8; }
+    .sb-sector-ct { color: #506080; font-weight: 500; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 18px; border-radius: 8px; font-size: 13px;
+      font-family: 'Inter', sans-serif; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; border: none;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-ghost {
+      background: none; border: 1px solid #1a2540; color: #7a8baa;
+    }
+    .btn-ghost:hover { border-color: #3b82f6; color: #60a5fa; }
+
+    /* ════════════════════════════════════════
+       VIEW 2 — COUNTRY
+       ════════════════════════════════════════ */
+    #country-view {
+      flex-direction: column; overflow: hidden;
     }
 
-    .panel-header h1 {
-      font-size: 14px;
-      font-weight: 400;
-      color: #7a8baa;
+    .cv-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px;
+      border-bottom: 1px solid #1a2540;
+      background: #0d1220;
     }
+    .cv-topbar-left { display: flex; align-items: center; gap: 16px; }
+    .cv-topbar .brand { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #3b82f6; }
+    .cv-country-title { font-size: 20px; font-weight: 700; color: #f0f4fc; }
+    .cv-country-region { font-size: 12px; color: #506080; }
 
-    .country-info {
-      padding: 24px;
-      flex: 1;
-      overflow-y: auto;
+    .cv-summary {
+      display: flex; gap: 16px; padding: 20px 32px;
+      background: #0a0e17;
     }
-
-    .country-info .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      text-align: center;
-      color: #3d4f6f;
+    .cv-card {
+      flex: 1; background: #111c33; border-radius: 10px;
+      padding: 20px; min-width: 0;
     }
+    .cv-card-val { font-size: 28px; font-weight: 800; color: #f0f4fc; }
+    .cv-card-label { font-size: 11px; color: #506080; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .cv-card-sub { font-size: 12px; color: #3b82f6; margin-top: 6px; }
 
-    .empty-state .icon {
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-      background: #111c33;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 16px;
-      font-size: 28px;
+    /* Filters */
+    .cv-filters {
+      display: flex; gap: 12px; padding: 14px 32px;
+      background: #0d1220; border-bottom: 1px solid #1a2540;
+      flex-wrap: wrap; align-items: center;
     }
-
-    .empty-state p {
-      font-size: 13px;
-      line-height: 1.6;
-      max-width: 220px;
-    }
-
-    /* ── Selected Country View ── */
-    .selected-country {
-      display: none;
-    }
-
-    .selected-country.active {
-      display: block;
-    }
-
-    .selected-country .country-flag-bar {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin-bottom: 24px;
-    }
-
-    .selected-country .country-name {
-      font-size: 22px;
-      font-weight: 600;
-      color: #f0f4fc;
-    }
-
-    .selected-country .country-region {
-      font-size: 12px;
-      color: #506080;
-      margin-top: 2px;
-    }
-
-    .info-section {
-      background: #111c33;
-      border-radius: 10px;
-      padding: 20px;
-      margin-bottom: 12px;
-    }
-
-    .info-section .section-title {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-      color: #3b82f6;
-      margin-bottom: 14px;
-    }
-
-    .info-placeholder {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .placeholder-line {
-      height: 12px;
-      border-radius: 6px;
-      background: #182440;
-    }
-
-    .placeholder-line.w70 { width: 70%; }
-    .placeholder-line.w50 { width: 50%; }
-    .placeholder-line.w85 { width: 85%; }
-    .placeholder-line.w40 { width: 40%; }
-
-    .back-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: none;
-      border: 1px solid #1a2540;
-      color: #7a8baa;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-family: 'Inter', sans-serif;
+    .cv-filters label { font-size: 11px; color: #506080; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .cv-filters select {
+      background: #111c33; border: 1px solid #1a2540;
+      color: #a0b4d8; padding: 7px 12px; border-radius: 6px;
+      font-size: 12px; font-family: 'Inter', sans-serif;
       cursor: pointer;
-      margin-top: 16px;
+    }
+    .cv-filters select:focus { outline: none; border-color: #3b82f6; }
+
+    /* SME Table */
+    .cv-table-wrap {
+      flex: 1; overflow-y: auto; padding: 0 32px 32px;
+      background: #0a0e17;
+    }
+    .cv-table {
+      width: 100%; border-collapse: collapse; margin-top: 12px;
+    }
+    .cv-table th {
+      text-align: left; padding: 12px 14px;
+      font-size: 10px; font-weight: 600; color: #506080;
+      text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid #1a2540;
+      position: sticky; top: 0; background: #0a0e17; z-index: 2;
+    }
+    .cv-table td {
+      padding: 14px 14px; font-size: 13px; color: #c0ccee;
+      border-bottom: 1px solid #111c33;
+    }
+    .cv-table tr { cursor: pointer; transition: background 0.15s; }
+    .cv-table tbody tr:hover { background: #111c33; }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-green { background: rgba(16,185,129,0.15); color: #10b981; }
+    .badge-yellow { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .badge-red { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .badge-blue { background: rgba(59,130,246,0.15); color: #3b82f6; }
+
+    .confidence-bar {
+      width: 60px; height: 6px; background: #1a2540; border-radius: 3px; overflow: hidden;
+    }
+    .confidence-fill { height: 100%; border-radius: 3px; }
+
+    /* ════════════════════════════════════════
+       VIEW 3 — SME PROFILE
+       ════════════════════════════════════════ */
+    #sme-view {
+      flex-direction: column; overflow: hidden;
+    }
+
+    .sv-topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px; border-bottom: 1px solid #1a2540;
+      background: #0d1220;
+    }
+    .sv-topbar-left { display: flex; align-items: center; gap: 16px; }
+    .sv-topbar .brand { font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #3b82f6; }
+
+    .sv-header {
+      padding: 28px 32px; background: #0d1220;
+      border-bottom: 1px solid #1a2540;
+    }
+    .sv-header-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 20px; }
+    .sv-header-left { flex: 1; }
+    .sv-sme-name { font-size: 26px; font-weight: 800; color: #f0f4fc; margin-bottom: 6px; }
+    .sv-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+    .sv-meta-item { font-size: 12px; color: #7a8baa; }
+    .sv-meta-item span { color: #a0b4d8; font-weight: 500; }
+
+    .sv-tags { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .sv-tag {
+      padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600;
+      background: rgba(59,130,246,0.1); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2);
+    }
+    .sv-tag.impact { background: rgba(16,185,129,0.1); color: #34d399; border-color: rgba(16,185,129,0.2); }
+
+    .sv-scores {
+      display: flex; gap: 20px; margin-top: 4px;
+    }
+    .sv-score-card {
+      background: #111c33; border-radius: 10px; padding: 18px 24px;
+      text-align: center; min-width: 150px;
+    }
+    .sv-score-val { font-size: 32px; font-weight: 800; }
+    .sv-score-val.high { color: #10b981; }
+    .sv-score-val.med { color: #f59e0b; }
+    .sv-score-val.low { color: #ef4444; }
+    .sv-score-label { font-size: 10px; color: #506080; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .sv-score-unit { font-size: 13px; color: #506080; font-weight: 400; }
+
+    /* Tabs */
+    .sv-tabs {
+      display: flex; gap: 0; background: #0d1220;
+      border-bottom: 1px solid #1a2540; padding: 0 32px;
+    }
+    .sv-tab {
+      padding: 14px 22px; font-size: 13px; font-weight: 500;
+      color: #506080; cursor: pointer; border-bottom: 2px solid transparent;
       transition: all 0.2s;
     }
+    .sv-tab:hover { color: #a0b4d8; }
+    .sv-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
 
-    .back-btn:hover {
-      border-color: #3b82f6;
-      color: #60a5fa;
-    }
-
-    /* ── Grid lines behind map ── */
-    .graticule {
-      fill: none;
-      stroke: #111c33;
-      stroke-width: 0.3px;
-    }
-
-    /* ── Loading ── */
-    #loading {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+    .sv-content {
+      flex: 1; overflow-y: auto; padding: 28px 32px;
       background: #0a0e17;
-      z-index: 10;
     }
 
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Shared panel styles */
+    .panel {
+      background: #111c33; border-radius: 10px;
+      padding: 22px; margin-bottom: 16px;
+    }
+    .panel-title {
+      font-size: 10px; font-weight: 600; color: #3b82f6;
+      text-transform: uppercase; letter-spacing: 1.5px;
+      margin-bottom: 16px;
+    }
+
+    /* Overview grid */
+    .ov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .ov-item-label { font-size: 11px; color: #506080; text-transform: uppercase; letter-spacing: 1px; }
+    .ov-item-val { font-size: 15px; color: #e0e6f0; font-weight: 500; margin-top: 4px; }
+
+    /* Sanity check */
+    .sc-summary {
+      display: flex; gap: 16px; margin-bottom: 20px;
+    }
+    .sc-summary-item {
+      flex: 1; background: #0d1220; border-radius: 8px;
+      padding: 14px; text-align: center;
+    }
+    .sc-summary-val { font-size: 22px; font-weight: 700; }
+    .sc-summary-label { font-size: 10px; color: #506080; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+    .sc-table { width: 100%; border-collapse: collapse; }
+    .sc-table th {
+      text-align: left; padding: 10px 12px; font-size: 10px;
+      font-weight: 600; color: #506080; text-transform: uppercase;
+      letter-spacing: 1px; border-bottom: 1px solid #1a2540;
+    }
+    .sc-table td {
+      padding: 12px 12px; font-size: 13px; color: #c0ccee;
+      border-bottom: 1px solid #151f35;
+    }
+    .sc-table .explanation { font-size: 12px; color: #7a8baa; margin-top: 4px; line-height: 1.5; }
+
+    /* Financial charts placeholder */
+    .fin-chart {
+      background: #0d1220; border-radius: 8px;
+      padding: 20px; margin-bottom: 16px; position: relative;
+      height: 200px;
+    }
+    .fin-chart-title { font-size: 12px; color: #7a8baa; font-weight: 600; margin-bottom: 12px; }
+    .fin-chart svg { width: 100%; height: calc(100% - 30px); }
+
+    .fin-ratios { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .fin-ratio {
+      background: #0d1220; border-radius: 8px; padding: 16px; text-align: center;
+    }
+    .fin-ratio-val { font-size: 18px; font-weight: 700; color: #f0f4fc; }
+    .fin-ratio-label { font-size: 10px; color: #506080; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .fin-ratio-bench { font-size: 11px; color: #3b82f6; margin-top: 4px; }
+
+    /* Valuation */
+    .val-range {
+      background: #0d1220; border-radius: 8px; padding: 24px; margin-bottom: 16px;
+    }
+    .val-bar-container { position: relative; height: 40px; margin: 20px 0; }
+    .val-bar-track { position: absolute; top: 16px; left: 0; right: 0; height: 8px; background: #1a2540; border-radius: 4px; }
+    .val-bar-fill { position: absolute; top: 16px; height: 8px; background: linear-gradient(90deg, #6366f1, #3b82f6, #10b981); border-radius: 4px; }
+    .val-marker {
+      position: absolute; top: 8px; width: 2px; height: 24px; background: #f0f4fc;
+    }
+    .val-marker-label { position: absolute; top: -16px; font-size: 10px; color: #7a8baa; transform: translateX(-50%); white-space: nowrap; }
+    .val-marker-value { position: absolute; bottom: -20px; font-size: 12px; color: #f0f4fc; font-weight: 600; transform: translateX(-50%); white-space: nowrap; }
+
+    .val-labels { display: flex; justify-content: space-between; font-size: 12px; color: #506080; }
+    .val-details { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .val-detail-label { font-size: 11px; color: #506080; }
+    .val-detail-val { font-size: 14px; color: #e0e6f0; font-weight: 500; margin-top: 2px; }
+
+    /* Impact */
+    .impact-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .impact-card {
+      background: #0d1220; border-radius: 8px; padding: 18px; text-align: center;
+    }
+    .impact-icon { font-size: 28px; margin-bottom: 8px; }
+    .impact-val { font-size: 22px; font-weight: 700; color: #f0f4fc; }
+    .impact-label { font-size: 10px; color: #506080; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .impact-sub { font-size: 12px; color: #7a8baa; margin-top: 6px; }
+
+    .esg-bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .esg-bar-label { width: 100px; font-size: 12px; color: #a0b4d8; }
+    .esg-bar-track { flex: 1; height: 8px; background: #1a2540; border-radius: 4px; overflow: hidden; }
+    .esg-bar-fill { height: 100%; border-radius: 4px; }
+    .esg-bar-val { width: 40px; text-align: right; font-size: 12px; color: #7a8baa; }
+
+    /* Documents */
+    .doc-list { list-style: none; }
+    .doc-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 0; border-bottom: 1px solid #151f35;
+    }
+    .doc-icon { font-size: 20px; width: 40px; height: 40px; background: #0d1220; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .doc-name { font-size: 13px; color: #e0e6f0; font-weight: 500; }
+    .doc-meta { font-size: 11px; color: #506080; margin-top: 2px; }
+
+    /* Loading */
+    #loading {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: #0a0e17; z-index: 100;
+    }
     .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid #1a2540;
-      border-top-color: #3b82f6;
-      border-radius: 50%;
+      width: 36px; height: 36px; border: 3px solid #1a2540;
+      border-top-color: #3b82f6; border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
-
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Tooltip ── */
-    #tooltip {
-      position: absolute;
-      pointer-events: none;
-      background: #182440;
-      border: 1px solid #2a4070;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      color: #c0ccee;
-      opacity: 0;
-      transition: opacity 0.15s;
-      z-index: 20;
-      white-space: nowrap;
-    }
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1a2540; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2a4070; }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="map-container">
-      <div id="loading"><div class="spinner"></div></div>
-      <div id="tooltip"></div>
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  VIEW 1 — MAP                           ║
+     ╚══════════════════════════════════════════╝ -->
+<div id="map-view" class="view active">
+  <div id="map-container">
+    <div id="loading"><div class="spinner"></div></div>
+    <div id="tooltip"></div>
+    <div id="map-legend">
+      <div class="legend-title">SME Pipeline Density</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> High (8+)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Medium (4–7)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div> Low (1–3)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1b2a4a"></div> No data</div>
     </div>
+  </div>
 
-    <div id="info-panel">
-      <div class="panel-header">
-        <div class="app-brand">Ster IQ</div>
-        <h1>Continental Overview</h1>
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <div class="brand">Ster IQ</div>
+      <h1>Investor Dashboard</h1>
+    </div>
+    <div class="sidebar-body">
+      <div class="sidebar-empty" id="sidebar-empty">
+        <div class="icon">&#9673;</div>
+        <p>Hover over a country to see summary stats. Click to enter its deal environment.</p>
       </div>
-
-      <div class="country-info">
-        <!-- Empty state -->
-        <div class="empty-state" id="empty-state">
-          <div class="icon">&#9673;</div>
-          <p>Select a country on the map to view financial data and insights.</p>
+      <div class="sb-country" id="sb-country">
+        <div class="sb-country-name" id="sb-country-name">—</div>
+        <div class="sb-country-region" id="sb-country-region">—</div>
+        <div class="sb-stat-grid" id="sb-stats"></div>
+        <div class="sb-sectors">
+          <div class="sb-sectors-title">Top Sectors</div>
+          <div id="sb-sectors-list"></div>
         </div>
+        <button class="btn btn-primary" id="enter-country-btn" style="width:100%">Enter Deal Environment &#8594;</button>
+        <button class="btn btn-ghost" id="back-map-btn" style="width:100%; margin-top:10px">&#8592; Back to overview</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-        <!-- Selected country detail -->
-        <div class="selected-country" id="country-detail">
-          <div class="country-flag-bar">
-            <div>
-              <div class="country-name" id="country-name">—</div>
-              <div class="country-region" id="country-region">—</div>
-            </div>
-          </div>
-
-          <div class="info-section">
-            <div class="section-title">Financial Overview</div>
-            <div class="info-placeholder">
-              <div class="placeholder-line w85"></div>
-              <div class="placeholder-line w70"></div>
-              <div class="placeholder-line w50"></div>
-            </div>
-          </div>
-
-          <div class="info-section">
-            <div class="section-title">Market Data</div>
-            <div class="info-placeholder">
-              <div class="placeholder-line w70"></div>
-              <div class="placeholder-line w85"></div>
-              <div class="placeholder-line w40"></div>
-            </div>
-          </div>
-
-          <div class="info-section">
-            <div class="section-title">Investment Opportunities</div>
-            <div class="info-placeholder">
-              <div class="placeholder-line w50"></div>
-              <div class="placeholder-line w85"></div>
-              <div class="placeholder-line w70"></div>
-            </div>
-          </div>
-
-          <button class="back-btn" id="back-btn">&#8592; Back to overview</button>
-        </div>
+<!-- ╔══════════════════════════════════════════╗
+     ║  VIEW 2 — COUNTRY                       ║
+     ╚══════════════════════════════════════════╝ -->
+<div id="country-view" class="view">
+  <div class="cv-topbar">
+    <div class="cv-topbar-left">
+      <button class="btn btn-ghost" id="cv-back-btn">&#8592; Map</button>
+      <div>
+        <div class="cv-topbar .brand" style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#3b82f6;">Ster IQ</div>
+        <div class="cv-country-title" id="cv-country-name">—</div>
+        <div class="cv-country-region" id="cv-country-region">—</div>
       </div>
     </div>
   </div>
 
-  <script>
-    const regionMap = {
-      'DZA':'North Africa','EGY':'North Africa','LBY':'North Africa','MAR':'North Africa',
-      'TUN':'North Africa','ESH':'North Africa','SDN':'North Africa','SSD':'East Africa',
-      'NGA':'West Africa','GHA':'West Africa','SEN':'West Africa','MLI':'West Africa',
-      'BFA':'West Africa','NER':'West Africa','CIV':'West Africa','GIN':'West Africa',
-      'BEN':'West Africa','TGO':'West Africa','SLE':'West Africa','LBR':'West Africa',
-      'GMB':'West Africa','GNB':'West Africa','CPV':'West Africa','MRT':'West Africa',
-      'KEN':'East Africa','TZA':'East Africa','UGA':'East Africa','RWA':'East Africa',
-      'BDI':'East Africa','ETH':'East Africa','ERI':'East Africa','DJI':'East Africa',
-      'SOM':'East Africa','MDG':'East Africa','MUS':'East Africa','COM':'East Africa',
-      'SYC':'East Africa','MWI':'East Africa','MOZ':'East Africa','ZMB':'East Africa',
-      'ZWE':'East Africa',
-      'ZAF':'Southern Africa','BWA':'Southern Africa','NAM':'Southern Africa',
-      'LSO':'Southern Africa','SWZ':'Southern Africa','AGO':'Southern Africa',
-      'COD':'Central Africa','COG':'Central Africa','CMR':'Central Africa',
-      'GAB':'Central Africa','GNQ':'Central Africa','TCD':'Central Africa',
-      'CAF':'Central Africa','STP':'Central Africa',
-    };
+  <div class="cv-summary" id="cv-summary"></div>
 
-    const width = window.innerWidth - 380;
-    const height = window.innerHeight;
+  <div class="cv-filters" id="cv-filters">
+    <label>Filters:</label>
+    <select id="filter-sector"><option value="">All Sectors</option></select>
+    <select id="filter-size"><option value="">All Sizes</option><option value="Micro">Micro</option><option value="Small">Small</option><option value="Medium">Medium</option></select>
+    <select id="filter-impact"><option value="">All Impact Tags</option><option value="Women-led">Women-led</option><option value="Youth">Youth</option><option value="Climate">Climate</option><option value="Rural">Rural</option></select>
+    <select id="filter-readiness"><option value="">All Readiness</option><option value="IC-Ready">IC-Ready</option><option value="Pipeline">Pipeline</option><option value="Early">Early</option></select>
+  </div>
 
-    const svg = d3.select('#map-container')
-      .append('svg')
-      .attr('width', width)
-      .attr('height', height);
+  <div class="cv-table-wrap">
+    <table class="cv-table">
+      <thead>
+        <tr>
+          <th>SME Name</th>
+          <th>Sector</th>
+          <th>Revenue (USD)</th>
+          <th>Confidence</th>
+          <th>Flags</th>
+          <th>Readiness</th>
+        </tr>
+      </thead>
+      <tbody id="cv-table-body"></tbody>
+    </table>
+  </div>
+</div>
 
-    const g = svg.append('g');
+<!-- ╔══════════════════════════════════════════╗
+     ║  VIEW 3 — SME PROFILE                   ║
+     ╚══════════════════════════════════════════╝ -->
+<div id="sme-view" class="view">
+  <div class="sv-topbar">
+    <div class="sv-topbar-left">
+      <button class="btn btn-ghost" id="sv-back-btn">&#8592; Pipeline</button>
+      <div class="brand">Ster IQ</div>
+    </div>
+  </div>
 
-    const projection = d3.geoMercator()
-      .center([20, 2])
-      .scale(Math.min(width, height) * 0.55)
-      .translate([width / 2, height / 2]);
+  <div class="sv-header">
+    <div class="sv-header-top">
+      <div class="sv-header-left">
+        <div class="sv-sme-name" id="sv-sme-name">—</div>
+        <div class="sv-meta" id="sv-meta"></div>
+        <div class="sv-tags" id="sv-tags"></div>
+      </div>
+      <div class="sv-scores" id="sv-scores"></div>
+    </div>
+  </div>
 
-    const path = d3.geoPath().projection(projection);
+  <div class="sv-tabs" id="sv-tabs">
+    <div class="sv-tab active" data-tab="overview">Overview</div>
+    <div class="sv-tab" data-tab="financials">Financials</div>
+    <div class="sv-tab" data-tab="sanity">Sanity Check</div>
+    <div class="sv-tab" data-tab="valuation">Valuation</div>
+    <div class="sv-tab" data-tab="impact">Impact</div>
+    <div class="sv-tab" data-tab="documents">Documents</div>
+  </div>
 
-    // Graticule
-    const graticule = d3.geoGraticule().step([10, 10]);
-    g.append('path')
-      .datum(graticule())
-      .attr('class', 'graticule')
-      .attr('d', path);
+  <div class="sv-content">
+    <div class="tab-pane active" id="pane-overview"></div>
+    <div class="tab-pane" id="pane-financials"></div>
+    <div class="tab-pane" id="pane-sanity"></div>
+    <div class="tab-pane" id="pane-valuation"></div>
+    <div class="tab-pane" id="pane-impact"></div>
+    <div class="tab-pane" id="pane-documents"></div>
+  </div>
+</div>
 
-    const tooltip = d3.select('#tooltip');
-    let selectedId = null;
-    let zoomed = false;
+<script>
+// ════════════════════════════════════════════
+// MOCK DATA
+// ════════════════════════════════════════════
 
-    // African country ISO-A3 codes
-    const africanCodes = new Set([
-      'DZA','AGO','BEN','BWA','BFA','BDI','CPV','CMR','CAF','TCD','COM','COG','COD',
-      'CIV','DJI','EGY','GNQ','ERI','SWZ','ETH','GAB','GMB','GHA','GIN','GNB','KEN',
-      'LSO','LBR','LBY','MDG','MWI','MLI','MRT','MUS','MAR','MOZ','NAM','NER','NGA',
-      'RWA','STP','SEN','SYC','SLE','SOM','ZAF','SSD','SDN','TZA','TGO','TUN','UGA',
-      'ZMB','ZWE','ESH'
-    ]);
+const SECTORS = ['Agritech','Fintech','Healthtech','Logistics','Cleantech','Edtech','E-commerce','Manufacturing'];
+const IMPACT_TAGS_ALL = ['Women-led','Youth','Climate','Rural'];
+const SIZES = ['Micro','Small','Medium'];
+const READINESS = ['IC-Ready','Pipeline','Early'];
 
-    // Inline mapping: numeric country ID → { iso, name }
-    const countryData = {
-      '012': { iso:'DZA', name:'Algeria' },
-      '024': { iso:'AGO', name:'Angola' },
-      '204': { iso:'BEN', name:'Benin' },
-      '072': { iso:'BWA', name:'Botswana' },
-      '854': { iso:'BFA', name:'Burkina Faso' },
-      '108': { iso:'BDI', name:'Burundi' },
-      '132': { iso:'CPV', name:'Cabo Verde' },
-      '120': { iso:'CMR', name:'Cameroon' },
-      '140': { iso:'CAF', name:'Central African Republic' },
-      '148': { iso:'TCD', name:'Chad' },
-      '174': { iso:'COM', name:'Comoros' },
-      '178': { iso:'COG', name:'Republic of the Congo' },
-      '180': { iso:'COD', name:'Democratic Republic of the Congo' },
-      '384': { iso:'CIV', name:"Cote d'Ivoire" },
-      '262': { iso:'DJI', name:'Djibouti' },
-      '818': { iso:'EGY', name:'Egypt' },
-      '226': { iso:'GNQ', name:'Equatorial Guinea' },
-      '232': { iso:'ERI', name:'Eritrea' },
-      '748': { iso:'SWZ', name:'Eswatini' },
-      '231': { iso:'ETH', name:'Ethiopia' },
-      '266': { iso:'GAB', name:'Gabon' },
-      '270': { iso:'GMB', name:'Gambia' },
-      '288': { iso:'GHA', name:'Ghana' },
-      '324': { iso:'GIN', name:'Guinea' },
-      '624': { iso:'GNB', name:'Guinea-Bissau' },
-      '404': { iso:'KEN', name:'Kenya' },
-      '426': { iso:'LSO', name:'Lesotho' },
-      '430': { iso:'LBR', name:'Liberia' },
-      '434': { iso:'LBY', name:'Libya' },
-      '450': { iso:'MDG', name:'Madagascar' },
-      '454': { iso:'MWI', name:'Malawi' },
-      '466': { iso:'MLI', name:'Mali' },
-      '478': { iso:'MRT', name:'Mauritania' },
-      '480': { iso:'MUS', name:'Mauritius' },
-      '504': { iso:'MAR', name:'Morocco' },
-      '508': { iso:'MOZ', name:'Mozambique' },
-      '516': { iso:'NAM', name:'Namibia' },
-      '562': { iso:'NER', name:'Niger' },
-      '566': { iso:'NGA', name:'Nigeria' },
-      '646': { iso:'RWA', name:'Rwanda' },
-      '678': { iso:'STP', name:'Sao Tome and Principe' },
-      '686': { iso:'SEN', name:'Senegal' },
-      '690': { iso:'SYC', name:'Seychelles' },
-      '694': { iso:'SLE', name:'Sierra Leone' },
-      '706': { iso:'SOM', name:'Somalia' },
-      '710': { iso:'ZAF', name:'South Africa' },
-      '728': { iso:'SSD', name:'South Sudan' },
-      '729': { iso:'SDN', name:'Sudan' },
-      '834': { iso:'TZA', name:'Tanzania' },
-      '768': { iso:'TGO', name:'Togo' },
-      '788': { iso:'TUN', name:'Tunisia' },
-      '800': { iso:'UGA', name:'Uganda' },
-      '894': { iso:'ZMB', name:'Zambia' },
-      '716': { iso:'ZWE', name:'Zimbabwe' },
-      '732': { iso:'ESH', name:'Western Sahara' },
-    };
+function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+function pick(arr){ return arr[rand(0,arr.length-1)]; }
+function pickN(arr,n){ const s=new Set(); while(s.size<n && s.size<arr.length) s.add(pick(arr)); return [...s]; }
 
-    const idToIso = {};
-    const idToName = {};
-    for (const [numId, info] of Object.entries(countryData)) {
-      idToIso[numId] = info.iso;
-      idToName[numId] = info.name;
+// Seed a deterministic-ish dataset
+function seedRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+
+const srand = seedRandom(42);
+function sRand(a,b){ return Math.floor(srand()*(b-a+1))+a; }
+function sPick(arr){ return arr[sRand(0,arr.length-1)]; }
+function sPickN(arr,n){ const s=[]; const copy=[...arr]; for(let i=0;i<n&&copy.length;i++){const idx=sRand(0,copy.length-1);s.push(copy.splice(idx,1)[0]);} return s; }
+
+const countryPipelines = {};
+
+const pipelineCountries = [
+  { iso:'KEN', name:'Kenya', region:'East Africa', smeCount: 10 },
+  { iso:'NGA', name:'Nigeria', region:'West Africa', smeCount: 12 },
+  { iso:'ZAF', name:'South Africa', region:'Southern Africa', smeCount: 9 },
+  { iso:'GHA', name:'Ghana', region:'West Africa', smeCount: 7 },
+  { iso:'RWA', name:'Rwanda', region:'East Africa', smeCount: 6 },
+  { iso:'ETH', name:'Ethiopia', region:'East Africa', smeCount: 5 },
+  { iso:'SEN', name:'Senegal', region:'West Africa', smeCount: 4 },
+  { iso:'TZA', name:'Tanzania', region:'East Africa', smeCount: 5 },
+  { iso:'UGA', name:'Uganda', region:'East Africa', smeCount: 3 },
+  { iso:'EGY', name:'Egypt', region:'North Africa', smeCount: 8 },
+  { iso:'MAR', name:'Morocco', region:'North Africa', smeCount: 4 },
+  { iso:'CIV', name:"Cote d'Ivoire", region:'West Africa', smeCount: 3 },
+  { iso:'CMR', name:'Cameroon', region:'Central Africa', smeCount: 2 },
+  { iso:'MOZ', name:'Mozambique', region:'East Africa', smeCount: 2 },
+  { iso:'BWA', name:'Botswana', region:'Southern Africa', smeCount: 1 },
+];
+
+const sanityChecks = [
+  { name:'Revenue vs Employees', desc:'Revenue per employee compared to sector benchmark' },
+  { name:'Revenue Growth Consistency', desc:'Year-over-year growth pattern analysis' },
+  { name:'Gross Margin Range', desc:'Gross margin within expected sector band' },
+  { name:'Expense Ratio', desc:'Operating expenses as percentage of revenue' },
+  { name:'Customer Concentration', desc:'Top client dependency risk' },
+  { name:'Cash Runway', desc:'Months of operating expenses covered by cash on hand' },
+  { name:'Debt-to-Equity', desc:'Leverage ratio against industry norm' },
+  { name:'Tax Compliance', desc:'Filing history and outstanding obligations' },
+  { name:'Audit Trail', desc:'Quality and completeness of financial records' },
+  { name:'Related Party Transactions', desc:'Transactions with connected entities flagged for review' },
+];
+
+function generateSME(countryIso, countryName, index) {
+  const sector = sPick(SECTORS);
+  const size = sPick(SIZES);
+  const readiness = sPick(READINESS);
+  const tags = sPickN(IMPACT_TAGS_ALL, sRand(1,3));
+  const investmentReadiness = sRand(25, 95);
+  const dataCompleteness = sRand(40, 98);
+  const revenue = [sRand(50,800)*1000, sRand(60,900)*1000, sRand(70,1200)*1000];
+  const cogs = revenue.map(r => Math.round(r * (sRand(30,65)/100)));
+  const opex = revenue.map(r => Math.round(r * (sRand(15,35)/100)));
+  const netIncome = revenue.map((r,i) => r - cogs[i] - opex[i]);
+  const employees = sRand(5, 120);
+  const founded = sRand(2012, 2022);
+  const flagCount = sRand(0, 4);
+  const confidence = sRand(40, 98);
+
+  const checks = sanityChecks.map(c => {
+    const r = srand();
+    let result, explanation;
+    if (r < 0.55) {
+      result = 'Pass';
+      explanation = `${c.desc}. Value is within acceptable range for ${sector} sector.`;
+    } else if (r < 0.82) {
+      result = 'Warning';
+      explanation = `${c.desc}. Value is slightly outside expected range — recommend follow-up during due diligence.`;
+    } else {
+      result = 'Flag';
+      explanation = `${c.desc}. Significant deviation detected — requires detailed review before proceeding.`;
     }
+    return { name: c.name, result, explanation };
+  });
 
-    // Named regions without numeric IDs in the dataset
-    const namedAfricanRegions = { 'Somaliland': { iso: 'SOM', name: 'Somaliland' } };
+  const passCount = checks.filter(c=>c.result==='Pass').length;
+  const warnCount = checks.filter(c=>c.result==='Warning').length;
+  const flagCountSC = checks.filter(c=>c.result==='Flag').length;
 
-    // Load world topojson from CDN (50m for better detail)
-    d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(world => {
-      const countries = topojson.feature(world, world.objects.countries);
+  const valLow = sRand(200,600)*1000;
+  const valBase = valLow + sRand(200,500)*1000;
+  const valHigh = valBase + sRand(200,800)*1000;
 
-      const africaFeatures = countries.features.filter(f => {
-        // Match by numeric ID
-        if (f.id && idToIso[f.id] && africanCodes.has(idToIso[f.id])) return true;
-        // Match by name for regions without numeric IDs (e.g. Somaliland)
-        const name = f.properties && f.properties.name;
-        if (name && namedAfricanRegions[name]) {
-          f._iso = namedAfricanRegions[name].iso;
-          f._name = namedAfricanRegions[name].name;
-          return true;
-        }
-        return false;
-      });
+  const genderSplit = sRand(25,65);
+  const youthPct = sRand(15,55);
 
-      g.selectAll('.country-path')
-        .data(africaFeatures)
-        .enter()
-        .append('path')
-        .attr('class', 'country-path default')
-        .attr('d', path)
-        .attr('data-id', d => d.id || d._name)
-        .attr('data-name', d => idToName[d.id] || d._name || 'Unknown')
-        .attr('data-iso', d => idToIso[d.id] || d._iso || '')
-        .on('mouseover', function(event, d) {
-          const fid = d.id || d._name;
-          if (fid === selectedId) return;
-          tooltip.style('opacity', 1).text(idToName[d.id] || d._name || 'Unknown');
-        })
-        .on('mousemove', function(event) {
-          tooltip
-            .style('left', (event.offsetX + 14) + 'px')
-            .style('top', (event.offsetY - 10) + 'px');
-        })
-        .on('mouseout', function() {
-          tooltip.style('opacity', 0);
-        })
-        .on('click', function(event, d) {
-          event.stopPropagation();
-          selectCountry(d);
-        });
+  return {
+    id: `${countryIso}-SME-${index}`,
+    name: `SME ${index}`,
+    country: countryName,
+    countryIso,
+    sector,
+    size,
+    readiness,
+    tags,
+    investmentReadiness,
+    dataCompleteness,
+    revenue,
+    cogs,
+    opex,
+    netIncome,
+    employees,
+    founded,
+    flagCount,
+    confidence,
+    checks,
+    passCount,
+    warnCount,
+    flagCountSC,
+    valuation: { low: valLow, base: valBase, high: valHigh, method: sPick(['DCF','Comparable Multiples','Scorecard','Berkus']), assumptions: `Based on ${sRand(2,4)}x revenue multiple with ${sRand(15,30)}% discount for market risk. Terminal growth rate ${sRand(2,5)}%.` },
+    impact: {
+      genderSplit,
+      youthPct,
+      jobsCreated: sRand(10,200),
+      esg: { environmental: sRand(30,95), social: sRand(40,95), governance: sRand(35,90) },
+    },
+    documents: [
+      { name:'Financial Statements FY2024', type:'PDF', date:'Jan 2025', size:'2.4 MB' },
+      { name:'Pitch Deck', type:'PDF', date:'Mar 2025', size:'8.1 MB' },
+      { name:'Cap Table', type:'XLSX', date:'Feb 2025', size:'340 KB' },
+      { name:'Due Diligence Checklist', type:'PDF', date:'Dec 2024', size:'1.1 MB' },
+      { name:'Board Minutes', type:'PDF', date:'Nov 2024', size:'520 KB' },
+    ],
+  };
+}
 
-      // Hide loading
-      document.getElementById('loading').style.display = 'none';
-    });
+pipelineCountries.forEach(c => {
+  const smes = [];
+  for (let i = 1; i <= c.smeCount; i++) {
+    smes.push(generateSME(c.iso, c.name, i));
+  }
+  countryPipelines[c.iso] = {
+    ...c,
+    smes,
+    topSectors: [...new Set(smes.map(s=>s.sector))].slice(0,4),
+    avgReadiness: Math.round(smes.reduce((a,s)=>a+s.investmentReadiness,0)/smes.length),
+    avgCompleteness: Math.round(smes.reduce((a,s)=>a+s.dataCompleteness,0)/smes.length),
+    icReady: smes.filter(s=>s.readiness==='IC-Ready').length,
+  };
+});
 
-    function selectCountry(d) {
+// ════════════════════════════════════════════
+// REGION MAP (for sidebar display)
+// ════════════════════════════════════════════
+const regionMap = {
+  'DZA':'North Africa','EGY':'North Africa','LBY':'North Africa','MAR':'North Africa',
+  'TUN':'North Africa','ESH':'North Africa','SDN':'North Africa','SSD':'East Africa',
+  'NGA':'West Africa','GHA':'West Africa','SEN':'West Africa','MLI':'West Africa',
+  'BFA':'West Africa','NER':'West Africa','CIV':'West Africa','GIN':'West Africa',
+  'BEN':'West Africa','TGO':'West Africa','SLE':'West Africa','LBR':'West Africa',
+  'GMB':'West Africa','GNB':'West Africa','CPV':'West Africa','MRT':'West Africa',
+  'KEN':'East Africa','TZA':'East Africa','UGA':'East Africa','RWA':'East Africa',
+  'BDI':'East Africa','ETH':'East Africa','ERI':'East Africa','DJI':'East Africa',
+  'SOM':'East Africa','MDG':'East Africa','MUS':'East Africa','COM':'East Africa',
+  'SYC':'East Africa','MWI':'East Africa','MOZ':'East Africa','ZMB':'East Africa',
+  'ZWE':'East Africa',
+  'ZAF':'Southern Africa','BWA':'Southern Africa','NAM':'Southern Africa',
+  'LSO':'Southern Africa','SWZ':'Southern Africa','AGO':'Southern Africa',
+  'COD':'Central Africa','COG':'Central Africa','CMR':'Central Africa',
+  'GAB':'Central Africa','GNQ':'Central Africa','TCD':'Central Africa',
+  'CAF':'Central Africa','STP':'Central Africa',
+};
+
+// ════════════════════════════════════════════
+// COUNTRY DATA MAPPING
+// ════════════════════════════════════════════
+const countryNumToInfo = {
+  '012':{iso:'DZA',name:'Algeria'},'024':{iso:'AGO',name:'Angola'},'204':{iso:'BEN',name:'Benin'},
+  '072':{iso:'BWA',name:'Botswana'},'854':{iso:'BFA',name:'Burkina Faso'},'108':{iso:'BDI',name:'Burundi'},
+  '132':{iso:'CPV',name:'Cabo Verde'},'120':{iso:'CMR',name:'Cameroon'},'140':{iso:'CAF',name:'Central African Republic'},
+  '148':{iso:'TCD',name:'Chad'},'174':{iso:'COM',name:'Comoros'},'178':{iso:'COG',name:'Republic of the Congo'},
+  '180':{iso:'COD',name:'DR Congo'},'384':{iso:'CIV',name:"Cote d'Ivoire"},
+  '262':{iso:'DJI',name:'Djibouti'},'818':{iso:'EGY',name:'Egypt'},'226':{iso:'GNQ',name:'Equatorial Guinea'},
+  '232':{iso:'ERI',name:'Eritrea'},'748':{iso:'SWZ',name:'Eswatini'},'231':{iso:'ETH',name:'Ethiopia'},
+  '266':{iso:'GAB',name:'Gabon'},'270':{iso:'GMB',name:'Gambia'},'288':{iso:'GHA',name:'Ghana'},
+  '324':{iso:'GIN',name:'Guinea'},'624':{iso:'GNB',name:'Guinea-Bissau'},'404':{iso:'KEN',name:'Kenya'},
+  '426':{iso:'LSO',name:'Lesotho'},'430':{iso:'LBR',name:'Liberia'},'434':{iso:'LBY',name:'Libya'},
+  '450':{iso:'MDG',name:'Madagascar'},'454':{iso:'MWI',name:'Malawi'},'466':{iso:'MLI',name:'Mali'},
+  '478':{iso:'MRT',name:'Mauritania'},'480':{iso:'MUS',name:'Mauritius'},'504':{iso:'MAR',name:'Morocco'},
+  '508':{iso:'MOZ',name:'Mozambique'},'516':{iso:'NAM',name:'Namibia'},'562':{iso:'NER',name:'Niger'},
+  '566':{iso:'NGA',name:'Nigeria'},'646':{iso:'RWA',name:'Rwanda'},'678':{iso:'STP',name:'Sao Tome and Principe'},
+  '686':{iso:'SEN',name:'Senegal'},'690':{iso:'SYC',name:'Seychelles'},'694':{iso:'SLE',name:'Sierra Leone'},
+  '706':{iso:'SOM',name:'Somalia'},'710':{iso:'ZAF',name:'South Africa'},'728':{iso:'SSD',name:'South Sudan'},
+  '729':{iso:'SDN',name:'Sudan'},'834':{iso:'TZA',name:'Tanzania'},'768':{iso:'TGO',name:'Togo'},
+  '788':{iso:'TUN',name:'Tunisia'},'800':{iso:'UGA',name:'Uganda'},'894':{iso:'ZMB',name:'Zambia'},
+  '716':{iso:'ZWE',name:'Zimbabwe'},'732':{iso:'ESH',name:'Western Sahara'},
+};
+
+const idToIso = {};
+const idToName = {};
+for (const [numId, info] of Object.entries(countryNumToInfo)) {
+  idToIso[numId] = info.iso;
+  idToName[numId] = info.name;
+}
+
+const africanCodes = new Set(Object.values(countryNumToInfo).map(c=>c.iso));
+const namedAfricanRegions = { 'Somaliland': { iso: 'SOM', name: 'Somaliland' } };
+
+// ════════════════════════════════════════════
+// VIEW MANAGEMENT
+// ════════════════════════════════════════════
+let currentView = 'map';
+let selectedCountryIso = null;
+let selectedSME = null;
+
+function showView(viewName) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(viewName + '-view').classList.add('active');
+  currentView = viewName;
+}
+
+// ════════════════════════════════════════════
+// MAP SETUP
+// ════════════════════════════════════════════
+const mapEl = document.getElementById('map-container');
+const sidebarW = 400;
+let mapW = window.innerWidth - sidebarW;
+let mapH = window.innerHeight;
+
+const svg = d3.select('#map-container').append('svg').attr('width', mapW).attr('height', mapH);
+const g = svg.append('g');
+
+const projection = d3.geoMercator()
+  .center([20, 2])
+  .scale(Math.min(mapW, mapH) * 0.55)
+  .translate([mapW / 2, mapH / 2]);
+const pathGen = d3.geoPath().projection(projection);
+
+const graticule = d3.geoGraticule().step([10, 10]);
+g.append('path').datum(graticule()).attr('class', 'graticule').attr('d', pathGen);
+
+const tooltip = d3.select('#tooltip');
+let hoveredId = null;
+let clickedId = null;
+
+function getTier(iso) {
+  const p = countryPipelines[iso];
+  if (!p) return 'none';
+  if (p.smeCount >= 8) return 'high';
+  if (p.smeCount >= 4) return 'med';
+  return 'low';
+}
+
+d3.json('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json').then(world => {
+  const countries = topojson.feature(world, world.objects.countries);
+
+  const africaFeatures = countries.features.filter(f => {
+    if (f.id && idToIso[f.id] && africanCodes.has(idToIso[f.id])) return true;
+    const name = f.properties && f.properties.name;
+    if (name && namedAfricanRegions[name]) {
+      f._iso = namedAfricanRegions[name].iso;
+      f._name = namedAfricanRegions[name].name;
+      return true;
+    }
+    return false;
+  });
+
+  g.selectAll('.country-path')
+    .data(africaFeatures)
+    .enter()
+    .append('path')
+    .attr('class', d => {
+      const iso = idToIso[d.id] || d._iso || '';
+      return `country-path tier-${getTier(iso)}`;
+    })
+    .attr('d', pathGen)
+    .attr('data-id', d => d.id || d._name)
+    .attr('data-iso', d => idToIso[d.id] || d._iso || '')
+    .attr('data-name', d => idToName[d.id] || d._name || '')
+    .on('mouseover', function(event, d) {
+      const iso = idToIso[d.id] || d._iso || '';
+      const name = idToName[d.id] || d._name || 'Unknown';
+      const p = countryPipelines[iso];
+
+      let html = `<div class="tt-name">${name}</div>`;
+      if (p) {
+        html += `<div class="tt-row"><span class="tt-label">Listed SMEs</span><span class="tt-value">${p.smeCount}</span></div>`;
+        html += `<div class="tt-row"><span class="tt-label">Top Sectors</span><span class="tt-value">${p.topSectors.slice(0,2).join(', ')}</span></div>`;
+        html += `<div class="tt-row"><span class="tt-label">Avg Readiness</span><span class="tt-value">${p.avgReadiness}/100</span></div>`;
+      } else {
+        html += `<div class="tt-row"><span class="tt-label">No pipeline data</span></div>`;
+      }
+      tooltip.html(html).style('opacity', 1);
+    })
+    .on('mousemove', function(event) {
+      tooltip
+        .style('left', (event.offsetX + 16) + 'px')
+        .style('top', (event.offsetY - 10) + 'px');
+    })
+    .on('mouseout', function() {
+      tooltip.style('opacity', 0);
+    })
+    .on('click', function(event, d) {
+      event.stopPropagation();
       const id = d.id || d._name;
       const iso = idToIso[d.id] || d._iso || '';
       const name = idToName[d.id] || d._name || 'Unknown';
-
-      // If clicking same country, deselect
-      if (selectedId === id) {
-        resetView();
-        return;
-      }
-
-      selectedId = id;
-      zoomed = true;
-
-      // Update classes
-      g.selectAll('.country-path')
-        .classed('default', false)
-        .classed('selected', false)
-        .classed('dimmed', true);
-
-      g.select(`.country-path[data-id="${id}"]`)
-        .classed('dimmed', false)
-        .classed('selected', true)
-        .raise();
-
-      // Zoom to country
-      const [[x0, y0], [x1, y1]] = path.bounds(d);
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      const cx = (x0 + x1) / 2;
-      const cy = (y0 + y1) / 2;
-      const scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / width, dy / height)));
-      const translateX = width / 2 - scale * cx;
-      const translateY = height / 2 - scale * cy;
-
-      g.transition()
-        .duration(750)
-        .attr('transform', `translate(${translateX},${translateY}) scale(${scale})`);
-
-      // Update sidebar
-      document.getElementById('empty-state').style.display = 'none';
-      document.getElementById('country-detail').classList.add('active');
-      document.getElementById('country-name').textContent = name;
-      document.getElementById('country-region').textContent = regionMap[iso] || 'Africa';
-
-      tooltip.style('opacity', 0);
-    }
-
-    function resetView() {
-      selectedId = null;
-      zoomed = false;
-
-      g.selectAll('.country-path')
-        .classed('selected', false)
-        .classed('dimmed', false)
-        .classed('default', true);
-
-      g.transition()
-        .duration(750)
-        .attr('transform', '');
-
-      document.getElementById('empty-state').style.display = '';
-      document.getElementById('country-detail').classList.remove('active');
-    }
-
-    // Click on empty space to reset
-    svg.on('click', function() {
-      if (zoomed) resetView();
+      selectCountryOnMap(id, iso, name, d);
     });
 
-    // Back button
-    document.getElementById('back-btn').addEventListener('click', resetView);
+  document.getElementById('loading').style.display = 'none';
+});
 
-    // Resize handler
-    window.addEventListener('resize', () => {
-      const newWidth = window.innerWidth - 380;
-      const newHeight = window.innerHeight;
-      svg.attr('width', newWidth).attr('height', newHeight);
+function selectCountryOnMap(id, iso, name, d) {
+  if (clickedId === id) {
+    resetMapSelection();
+    return;
+  }
+
+  clickedId = id;
+  selectedCountryIso = iso;
+
+  g.selectAll('.country-path').classed('dimmed', true).classed('selected', false);
+  g.select(`.country-path[data-id="${id}"]`).classed('dimmed', false).classed('selected', true).raise();
+
+  // Zoom
+  const [[x0, y0], [x1, y1]] = pathGen.bounds(d);
+  const dx = x1 - x0, dy = y1 - y0;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const scale = Math.max(1, Math.min(8, 0.9 / Math.max(dx / mapW, dy / mapH)));
+  g.transition().duration(750)
+    .attr('transform', `translate(${mapW/2 - scale*cx},${mapH/2 - scale*cy}) scale(${scale})`);
+
+  tooltip.style('opacity', 0);
+
+  // Sidebar
+  const p = countryPipelines[iso];
+  document.getElementById('sidebar-empty').style.display = 'none';
+  const sbCountry = document.getElementById('sb-country');
+  sbCountry.classList.add('active');
+  document.getElementById('sb-country-name').textContent = name;
+  document.getElementById('sb-country-region').textContent = regionMap[iso] || 'Africa';
+
+  const statsEl = document.getElementById('sb-stats');
+  if (p) {
+    statsEl.innerHTML = `
+      <div class="sb-stat"><div class="sb-stat-val">${p.smeCount}</div><div class="sb-stat-label">Total SMEs</div></div>
+      <div class="sb-stat"><div class="sb-stat-val">${p.avgReadiness}</div><div class="sb-stat-label">Avg Readiness</div></div>
+      <div class="sb-stat"><div class="sb-stat-val">${p.avgCompleteness}%</div><div class="sb-stat-label">Data Completeness</div></div>
+      <div class="sb-stat"><div class="sb-stat-val">${p.icReady}</div><div class="sb-stat-label">IC-Ready Deals</div></div>
+    `;
+    const sectorsEl = document.getElementById('sb-sectors-list');
+    const sectorCounts = {};
+    p.smes.forEach(s => { sectorCounts[s.sector] = (sectorCounts[s.sector]||0)+1; });
+    sectorsEl.innerHTML = Object.entries(sectorCounts)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([s,c]) => `<div class="sb-sector-row"><span class="sb-sector-name">${s}</span><span class="sb-sector-ct">${c}</span></div>`)
+      .join('');
+    document.getElementById('enter-country-btn').style.display = '';
+  } else {
+    statsEl.innerHTML = `<div class="sb-stat" style="grid-column:1/-1"><div class="sb-stat-val">—</div><div class="sb-stat-label">No pipeline data available</div></div>`;
+    document.getElementById('sb-sectors-list').innerHTML = '';
+    document.getElementById('enter-country-btn').style.display = 'none';
+  }
+}
+
+function resetMapSelection() {
+  clickedId = null;
+  selectedCountryIso = null;
+  g.selectAll('.country-path').classed('dimmed', false).classed('selected', false);
+  g.transition().duration(750).attr('transform', '');
+  document.getElementById('sidebar-empty').style.display = '';
+  document.getElementById('sb-country').classList.remove('active');
+}
+
+svg.on('click', function() { if (clickedId) resetMapSelection(); });
+document.getElementById('back-map-btn').addEventListener('click', resetMapSelection);
+
+document.getElementById('enter-country-btn').addEventListener('click', () => {
+  if (selectedCountryIso && countryPipelines[selectedCountryIso]) {
+    openCountryView(selectedCountryIso);
+  }
+});
+
+// ════════════════════════════════════════════
+// COUNTRY VIEW
+// ════════════════════════════════════════════
+let currentCountryData = null;
+
+function openCountryView(iso) {
+  const p = countryPipelines[iso];
+  if (!p) return;
+  currentCountryData = p;
+  selectedCountryIso = iso;
+
+  document.getElementById('cv-country-name').textContent = p.name;
+  document.getElementById('cv-country-region').textContent = p.region;
+
+  // Summary cards
+  document.getElementById('cv-summary').innerHTML = `
+    <div class="cv-card">
+      <div class="cv-card-val">${p.smeCount}</div>
+      <div class="cv-card-label">Total SMEs</div>
+      <div class="cv-card-sub">${p.smes.filter(s=>s.readiness==='IC-Ready').length} IC-Ready</div>
+    </div>
+    <div class="cv-card">
+      <div class="cv-card-val">${[...new Set(p.smes.map(s=>s.sector))].length}</div>
+      <div class="cv-card-label">Sectors Represented</div>
+      <div class="cv-card-sub">${p.topSectors.slice(0,2).join(', ')}</div>
+    </div>
+    <div class="cv-card">
+      <div class="cv-card-val">${p.avgCompleteness}%</div>
+      <div class="cv-card-label">Avg Data Completeness</div>
+      <div class="cv-card-sub">Across all listed SMEs</div>
+    </div>
+    <div class="cv-card">
+      <div class="cv-card-val">${p.avgReadiness}</div>
+      <div class="cv-card-label">Avg Investment Readiness</div>
+      <div class="cv-card-sub">Score out of 100</div>
+    </div>
+  `;
+
+  // Populate sector filter
+  const sectorSelect = document.getElementById('filter-sector');
+  sectorSelect.innerHTML = '<option value="">All Sectors</option>';
+  [...new Set(p.smes.map(s=>s.sector))].sort().forEach(s => {
+    sectorSelect.innerHTML += `<option value="${s}">${s}</option>`;
+  });
+
+  // Reset filters
+  document.getElementById('filter-size').value = '';
+  document.getElementById('filter-impact').value = '';
+  document.getElementById('filter-readiness').value = '';
+
+  renderSMETable(p.smes);
+  showView('country');
+}
+
+function renderSMETable(smes) {
+  const tbody = document.getElementById('cv-table-body');
+  tbody.innerHTML = smes.map(s => {
+    const confColor = s.confidence >= 70 ? '#10b981' : s.confidence >= 45 ? '#f59e0b' : '#ef4444';
+    const readBadge = s.readiness === 'IC-Ready' ? 'badge-green' : s.readiness === 'Pipeline' ? 'badge-yellow' : 'badge-blue';
+    return `
+      <tr data-sme-id="${s.id}">
+        <td><strong style="color:#f0f4fc">${s.name}</strong></td>
+        <td>${s.sector}</td>
+        <td>$${(s.revenue[2]).toLocaleString()}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="confidence-bar"><div class="confidence-fill" style="width:${s.confidence}%;background:${confColor}"></div></div>
+            <span style="font-size:11px;color:#7a8baa">${s.confidence}%</span>
+          </div>
+        </td>
+        <td>${s.flagCount > 0 ? `<span class="badge badge-red">${s.flagCount} flag${s.flagCount>1?'s':''}</span>` : '<span style="color:#506080">None</span>'}</td>
+        <td><span class="badge ${readBadge}">${s.readiness}</span></td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('tr').forEach(tr => {
+    tr.addEventListener('click', () => {
+      const smeId = tr.getAttribute('data-sme-id');
+      const sme = currentCountryData.smes.find(s => s.id === smeId);
+      if (sme) openSMEProfile(sme);
     });
-  </script>
+  });
+}
+
+// Filters
+['filter-sector','filter-size','filter-impact','filter-readiness'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
+
+function applyFilters() {
+  if (!currentCountryData) return;
+  let filtered = [...currentCountryData.smes];
+
+  const sector = document.getElementById('filter-sector').value;
+  const size = document.getElementById('filter-size').value;
+  const impact = document.getElementById('filter-impact').value;
+  const readiness = document.getElementById('filter-readiness').value;
+
+  if (sector) filtered = filtered.filter(s => s.sector === sector);
+  if (size) filtered = filtered.filter(s => s.size === size);
+  if (impact) filtered = filtered.filter(s => s.tags.includes(impact));
+  if (readiness) filtered = filtered.filter(s => s.readiness === readiness);
+
+  renderSMETable(filtered);
+}
+
+document.getElementById('cv-back-btn').addEventListener('click', () => {
+  showView('map');
+});
+
+// ════════════════════════════════════════════
+// SME PROFILE
+// ════════════════════════════════════════════
+function openSMEProfile(sme) {
+  selectedSME = sme;
+
+  // Header
+  document.getElementById('sv-sme-name').textContent = sme.name;
+  document.getElementById('sv-meta').innerHTML = `
+    <div class="sv-meta-item">Sector: <span>${sme.sector}</span></div>
+    <div class="sv-meta-item">Country: <span>${sme.country}</span></div>
+    <div class="sv-meta-item">Founded: <span>${sme.founded}</span></div>
+    <div class="sv-meta-item">Employees: <span>${sme.employees}</span></div>
+    <div class="sv-meta-item">Size: <span>${sme.size}</span></div>
+  `;
+
+  document.getElementById('sv-tags').innerHTML = sme.tags.map(t =>
+    `<span class="sv-tag impact">${t}</span>`
+  ).join('');
+
+  const readinessClass = sme.investmentReadiness >= 70 ? 'high' : sme.investmentReadiness >= 45 ? 'med' : 'low';
+  document.getElementById('sv-scores').innerHTML = `
+    <div class="sv-score-card">
+      <div class="sv-score-val ${readinessClass}">${sme.investmentReadiness}<span class="sv-score-unit">/100</span></div>
+      <div class="sv-score-label">Investment Readiness</div>
+    </div>
+    <div class="sv-score-card">
+      <div class="sv-score-val ${sme.dataCompleteness >= 70 ? 'high' : sme.dataCompleteness >= 45 ? 'med' : 'low'}">${sme.dataCompleteness}<span class="sv-score-unit">%</span></div>
+      <div class="sv-score-label">Data Completeness</div>
+    </div>
+  `;
+
+  // Render all tab content
+  renderOverview(sme);
+  renderFinancials(sme);
+  renderSanityCheck(sme);
+  renderValuation(sme);
+  renderImpact(sme);
+  renderDocuments(sme);
+
+  // Reset to overview tab
+  document.querySelectorAll('.sv-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.sv-tab[data-tab="overview"]').classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('pane-overview').classList.add('active');
+
+  showView('sme');
+}
+
+// Tab switching
+document.getElementById('sv-tabs').addEventListener('click', e => {
+  const tab = e.target.closest('.sv-tab');
+  if (!tab) return;
+  document.querySelectorAll('.sv-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('pane-' + tab.dataset.tab).classList.add('active');
+});
+
+document.getElementById('sv-back-btn').addEventListener('click', () => {
+  showView('country');
+});
+
+// ── Overview Tab ──
+function renderOverview(sme) {
+  document.getElementById('pane-overview').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Company Summary</div>
+      <div class="ov-grid">
+        <div><div class="ov-item-label">Company Name</div><div class="ov-item-val">${sme.name}</div></div>
+        <div><div class="ov-item-label">Sector</div><div class="ov-item-val">${sme.sector}</div></div>
+        <div><div class="ov-item-label">Country</div><div class="ov-item-val">${sme.country}</div></div>
+        <div><div class="ov-item-label">Region</div><div class="ov-item-val">${regionMap[sme.countryIso] || 'Africa'}</div></div>
+        <div><div class="ov-item-label">Founded</div><div class="ov-item-val">${sme.founded}</div></div>
+        <div><div class="ov-item-label">Employees</div><div class="ov-item-val">${sme.employees}</div></div>
+        <div><div class="ov-item-label">Size Band</div><div class="ov-item-val">${sme.size}</div></div>
+        <div><div class="ov-item-label">Readiness Status</div><div class="ov-item-val">${sme.readiness}</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Key Metrics Snapshot</div>
+      <div class="ov-grid">
+        <div><div class="ov-item-label">Latest Revenue</div><div class="ov-item-val">$${sme.revenue[2].toLocaleString()}</div></div>
+        <div><div class="ov-item-label">Revenue Growth (YoY)</div><div class="ov-item-val">${Math.round((sme.revenue[2]-sme.revenue[1])/sme.revenue[1]*100)}%</div></div>
+        <div><div class="ov-item-label">Net Income</div><div class="ov-item-val">$${sme.netIncome[2].toLocaleString()}</div></div>
+        <div><div class="ov-item-label">Gross Margin</div><div class="ov-item-val">${Math.round((sme.revenue[2]-sme.cogs[2])/sme.revenue[2]*100)}%</div></div>
+        <div><div class="ov-item-label">Data Completeness</div><div class="ov-item-val">${sme.dataCompleteness}%</div></div>
+        <div><div class="ov-item-label">Investment Readiness</div><div class="ov-item-val">${sme.investmentReadiness}/100</div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Impact Tags</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${sme.tags.map(t => `<span class="sv-tag impact">${t}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Financials Tab ──
+function renderFinancials(sme) {
+  const years = ['FY2022','FY2023','FY2024'];
+  const grossMargins = sme.revenue.map((r,i) => Math.round((r - sme.cogs[i]) / r * 100));
+  const netMargins = sme.revenue.map((r,i) => Math.round(sme.netIncome[i] / r * 100));
+  const opexRatios = sme.revenue.map((r,i) => Math.round(sme.opex[i] / r * 100));
+
+  document.getElementById('pane-financials').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Three-Year Revenue Trend</div>
+      <div class="fin-chart" id="chart-revenue"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Three-Year Net Income Trend</div>
+      <div class="fin-chart" id="chart-netincome"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Ratio Benchmarks vs Sector Average</div>
+      <div class="fin-ratios">
+        <div class="fin-ratio">
+          <div class="fin-ratio-val">${grossMargins[2]}%</div>
+          <div class="fin-ratio-label">Gross Margin</div>
+          <div class="fin-ratio-bench">Sector avg: ${grossMargins[2] + sRand(-10,10)}%</div>
+        </div>
+        <div class="fin-ratio">
+          <div class="fin-ratio-val">${netMargins[2]}%</div>
+          <div class="fin-ratio-label">Net Margin</div>
+          <div class="fin-ratio-bench">Sector avg: ${netMargins[2] + sRand(-8,8)}%</div>
+        </div>
+        <div class="fin-ratio">
+          <div class="fin-ratio-val">${opexRatios[2]}%</div>
+          <div class="fin-ratio-label">OpEx Ratio</div>
+          <div class="fin-ratio-bench">Sector avg: ${opexRatios[2] + sRand(-5,10)}%</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Draw revenue chart
+  setTimeout(() => {
+    drawBarChart('chart-revenue', years, sme.revenue, '#3b82f6');
+    drawBarChart('chart-netincome', years, sme.netIncome, '#10b981');
+  }, 50);
+}
+
+function drawBarChart(containerId, labels, values, color) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const w = container.clientWidth - 40;
+  const h = 140;
+  const maxVal = Math.max(...values.map(Math.abs));
+
+  const svgEl = d3.select(`#${containerId}`).append('svg').attr('width', w + 40).attr('height', h + 30);
+  const barW = Math.min(60, w / labels.length - 20);
+  const gap = (w - barW * labels.length) / (labels.length + 1);
+
+  labels.forEach((label, i) => {
+    const x = 30 + gap + i * (barW + gap);
+    const barH = Math.max(4, (Math.abs(values[i]) / maxVal) * h);
+    const y = values[i] >= 0 ? h - barH : h;
+
+    svgEl.append('rect')
+      .attr('x', x).attr('y', y + 5)
+      .attr('width', barW).attr('height', barH)
+      .attr('rx', 4).attr('fill', color).attr('opacity', 0.8);
+
+    svgEl.append('text')
+      .attr('x', x + barW/2).attr('y', h + 22)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#506080').attr('font-size', '10px')
+      .text(label);
+
+    svgEl.append('text')
+      .attr('x', x + barW/2).attr('y', y)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#a0b4d8').attr('font-size', '11px')
+      .text('$' + (values[i]/1000).toFixed(0) + 'K');
+  });
+}
+
+// ── Sanity Check Tab ──
+function renderSanityCheck(sme) {
+  document.getElementById('pane-sanity').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Sanity Check Summary</div>
+      <div class="sc-summary">
+        <div class="sc-summary-item">
+          <div class="sc-summary-val" style="color:#f0f4fc">${sme.checks.length}</div>
+          <div class="sc-summary-label">Checks Run</div>
+        </div>
+        <div class="sc-summary-item">
+          <div class="sc-summary-val" style="color:#10b981">${sme.passCount}</div>
+          <div class="sc-summary-label">Passed</div>
+        </div>
+        <div class="sc-summary-item">
+          <div class="sc-summary-val" style="color:#f59e0b">${sme.warnCount}</div>
+          <div class="sc-summary-label">Warnings</div>
+        </div>
+        <div class="sc-summary-item">
+          <div class="sc-summary-val" style="color:#ef4444">${sme.flagCountSC}</div>
+          <div class="sc-summary-label">Flags</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Detailed Checks</div>
+      <table class="sc-table">
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Result</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sme.checks.map(c => {
+            const badgeClass = c.result === 'Pass' ? 'badge-green' : c.result === 'Warning' ? 'badge-yellow' : 'badge-red';
+            return `
+              <tr>
+                <td style="font-weight:500;white-space:nowrap">${c.name}</td>
+                <td><span class="badge ${badgeClass}">${c.result}</span></td>
+                <td><div class="explanation">${c.explanation}</div></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ── Valuation Tab ──
+function renderValuation(sme) {
+  const v = sme.valuation;
+  const range = v.high - v.low;
+  const basePos = ((v.base - v.low) / range) * 100;
+
+  document.getElementById('pane-valuation').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Valuation Range</div>
+      <div class="val-range">
+        <div class="val-bar-container">
+          <div class="val-bar-track"></div>
+          <div class="val-bar-fill" style="left:0;right:0;"></div>
+          <div class="val-marker" style="left:0%">
+            <div class="val-marker-label">Low</div>
+            <div class="val-marker-value">$${(v.low/1000).toFixed(0)}K</div>
+          </div>
+          <div class="val-marker" style="left:${basePos}%">
+            <div class="val-marker-label">Base</div>
+            <div class="val-marker-value" style="color:#3b82f6;font-size:14px;">$${(v.base/1000).toFixed(0)}K</div>
+          </div>
+          <div class="val-marker" style="left:100%">
+            <div class="val-marker-label">High</div>
+            <div class="val-marker-value">$${(v.high/1000).toFixed(0)}K</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Valuation Details</div>
+      <div class="val-details">
+        <div>
+          <div class="val-detail-label">Method</div>
+          <div class="val-detail-val">${v.method}</div>
+        </div>
+        <div>
+          <div class="val-detail-label">Base Estimate</div>
+          <div class="val-detail-val">$${(v.base/1000).toFixed(0)}K</div>
+        </div>
+        <div>
+          <div class="val-detail-label">Range Spread</div>
+          <div class="val-detail-val">$${(v.low/1000).toFixed(0)}K — $${(v.high/1000).toFixed(0)}K</div>
+        </div>
+        <div>
+          <div class="val-detail-label">Confidence</div>
+          <div class="val-detail-val">${sme.confidence}%</div>
+        </div>
+      </div>
+      <div style="margin-top:16px;">
+        <div class="val-detail-label">Assumptions</div>
+        <div class="val-detail-val" style="margin-top:6px;font-size:13px;line-height:1.6;color:#7a8baa">${v.assumptions}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Impact Tab ──
+function renderImpact(sme) {
+  const imp = sme.impact;
+  document.getElementById('pane-impact').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Social Impact Metrics</div>
+      <div class="impact-grid">
+        <div class="impact-card">
+          <div class="impact-val">${imp.genderSplit}%</div>
+          <div class="impact-label">Women in Workforce</div>
+          <div class="impact-sub">${100-imp.genderSplit}% men</div>
+        </div>
+        <div class="impact-card">
+          <div class="impact-val">${imp.youthPct}%</div>
+          <div class="impact-label">Youth Employment</div>
+          <div class="impact-sub">Under 35 years</div>
+        </div>
+        <div class="impact-card">
+          <div class="impact-val">${imp.jobsCreated}</div>
+          <div class="impact-label">Jobs Created</div>
+          <div class="impact-sub">Since founding</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">ESG Scores</div>
+      <div style="padding:4px 0;">
+        <div class="esg-bar-row">
+          <div class="esg-bar-label">Environmental</div>
+          <div class="esg-bar-track"><div class="esg-bar-fill" style="width:${imp.esg.environmental}%;background:#10b981"></div></div>
+          <div class="esg-bar-val">${imp.esg.environmental}</div>
+        </div>
+        <div class="esg-bar-row">
+          <div class="esg-bar-label">Social</div>
+          <div class="esg-bar-track"><div class="esg-bar-fill" style="width:${imp.esg.social}%;background:#3b82f6"></div></div>
+          <div class="esg-bar-val">${imp.esg.social}</div>
+        </div>
+        <div class="esg-bar-row">
+          <div class="esg-bar-label">Governance</div>
+          <div class="esg-bar-track"><div class="esg-bar-fill" style="width:${imp.esg.governance}%;background:#8b5cf6"></div></div>
+          <div class="esg-bar-val">${imp.esg.governance}</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Impact Tags</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${sme.tags.map(t => `<span class="sv-tag impact">${t}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Documents Tab ──
+function renderDocuments(sme) {
+  const typeIcons = { PDF: '&#128196;', XLSX: '&#128202;', DOC: '&#128203;' };
+  document.getElementById('pane-documents').innerHTML = `
+    <div class="panel">
+      <div class="panel-title">Available Documents</div>
+      <ul class="doc-list">
+        ${sme.documents.map(d => `
+          <li class="doc-item">
+            <div class="doc-icon">${typeIcons[d.type] || '&#128196;'}</div>
+            <div>
+              <div class="doc-name">${d.name}</div>
+              <div class="doc-meta">${d.type} &middot; ${d.size} &middot; ${d.date}</div>
+            </div>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════
+// RESIZE
+// ════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  mapW = window.innerWidth - sidebarW;
+  mapH = window.innerHeight;
+  svg.attr('width', mapW).attr('height', mapH);
+});
+</script>
 </body>
 </html>
